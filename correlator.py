@@ -103,12 +103,29 @@ class Correlator:
             print("ERROR: At least one correlation partner is not in featurepool.")
 
 
-    def add(self, dep, ind, com):
-        if dep and ind in self.dataset.columns.values:
-            newChain = ChainElement(dep, ind, com)
-            self.relationChain.append(newChain)
-        else:
-            print("ERROR: at least one featurename is not in dataset.")
+    # def add(self, dep, ind, com):
+    #     if dep and ind in self.dataset.columns.values:
+    #         newChain = ChainElement(dep, ind, com)
+    #         self.relationChain.append(newChain)
+    #     else:
+    #         print("ERROR: at least one featurename is not in dataset.")
+
+
+    def add(self, *args):
+
+        # (dep, ind, com)
+        # counter = 0
+        for arg in args:
+
+            dep = arg[0]
+            ind = arg[1]
+            com = arg[2]
+
+            if dep and ind in self.dataset.columns.values:
+                newChain = ChainElement(dep, ind, com)
+                self.relationChain.append(newChain)
+            else:
+                print("ERROR: {0} or {1} is not in featurenames of data.".format(dep, ind))
 
 
     def clear(self):
@@ -118,9 +135,11 @@ class Correlator:
 
 
     def printRelations(self):
+        print("Chain to process:")
+        count = 1
         for rel in self.relationChain:
-            print("\t", rel.getInfo())
-
+            print("\t{0}:".format(count), rel.getInfo())
+            count += 1
 
     # def processNext(self):
     #     rel = self.relationChain.pop()
@@ -267,25 +286,26 @@ def vis(x, y, info):
 
 def runTest():
 
-    m = 30    # number of samples
+    m = 100    # number of samples
     n = 4     # example: 7 --> [A,...,G]
-    
     cor = Correlator(m, n)
-    # cor.init(m, n)
-
     # "lin", "exp", "sin", "cos", "log10", "log2", "pow"
-    cor.add("A","C", Command(0.6,"sin","uniform",-1,1))
-    # cor.add("B","A", Command(0.8, "lin","normal"))
-    # cor.add("E","B", Command(0.8, "lin", "normal", 0, 1.8))
+    # first gets worked on first
+    chain = [
+        ("C","D", Command(0.9,"lin","normal")),
+        ("A","C", Command(0.6,"lin","normal",0,.4,power=2)),
+    ]
+
+    cor.add(*chain)
+    cor.printRelations()
 
     cor.processRelations()
-
     cor.saveFile()
-    
     cor.corTable()
+    data = cor.data()
 
-    plt.plot(cor.data()["C"], cor.data()["A"], "bx")
-    # plt.legend()
+    # vis(data["C"], data["A"], cor.relationChain[0].getInfo())
+    plt.plot(data, "x")
     plt.show()
 
 runTest()
