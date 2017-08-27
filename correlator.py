@@ -5,8 +5,6 @@ Created on Tue Jul  4 21:44:06 2017
 @author: Mo
 """
 
-# Correlator
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,10 +22,11 @@ rf = np.random.random
 class Correlator:
     
     def __init__(self):
-        self.outfilename = "default"
+        self.outfilename = ""
         self.featureNames = []
         self.dataset = False
-        self.commandChain = deque()
+        self.relationChain = []
+        self.relationChainInfo = []
 
     
     def makeFeatureNames(self, n):
@@ -51,14 +50,9 @@ class Correlator:
             counter += 1
            
     
-    
-    def makeRawData(self, m, n):
-        """Generates initial data.
-            
-            m - sample size
-            n - number of features
-
-        """
+    def init(self, m, n):
+        
+        # TODO enable range control
         self.makeFeatureNames(n)
         dataset = {}
         
@@ -67,7 +61,6 @@ class Correlator:
             dataset[name] = np.asarray([10 * rf() for i in range(m)])
             
         self.dataset = pd.DataFrame.from_dict(dataset)
-
 
 
     def correlate(self, dep, ind, command):
@@ -79,7 +72,7 @@ class Correlator:
             # print("independent:\n", self.dataset[ind].head())
             ind = self.dataset[ind]
 
-            print(command.getInfo())
+            # print(command.info())
             # # set function
             f = 0
             if command.ftype == "lin" :
@@ -101,56 +94,83 @@ class Correlator:
             rands = 0
             
             if command.noise == "normal":
-                rands = np.random.normal(command.mu, command.sig,len(ind))
+                rands = np.random.normal(command.p1, command.p2,len(ind))
             elif noise == "uniform":
-                rands = np.random.uniform(command.uniMin, command.uniMax,len(ind))
+                rands = np.random.uniform(command.p1, command.p2,len(ind))
             elif noise == "none":
                 rands = 0
             
-            self.dataset[dep] = command.raiser + command.slope * f + rands  
+            # TODO currently dep value gets overwritten!! --> No multicollinearities makeable
+            self.dataset[dep] = command.raiser + command.slope * f + rands
             
         else:
             print("ERROR: At least one correlation partner is not in featurepool.")
 
 
-
-    def addCommand(self, command):
-        self.commandChain.append(command)
-
-    def addCommmands(self, commands):
-        # TODO 
-        pass
-
-    def clearCommands(self):
-        self.commandChain.clear()
-
-    def showCommands(self):
-        for command in self.commandChain:
-            print("\t", command.info)
-
-    # correlate two features in raw dataset with given command
-    def processOneCorrelation(self, dep, ind, com):
-        # TODO
-        pass
-
-    def processCommandChain():
-        # TODO
-        pass
+    def add(self, dep, ind, com):
+        if dep and ind in self.dataset.columns.values:
+            newChain = ChainElement(dep, ind, com)
+            self.relationChain.append(newChain)
+        else:
+            print("ERROR: at least one featurename is not in dataset.")
 
 
-    # Getter and Setter
-    def makeOutfilename(filename):
-        """Makes hardcoded relative filepath out of given requested name"""
+    def clear(self):
+        self.relationChainInfo = []
+        self.relationChain.clear()
+        self.outfilename = ""
+
+
+    def printRelations(self):
+        for rel in self.relationChain:
+            print("\t", rel.getInfo())
+
+
+    # def processNext(self):
+    #     rel = self.relationChain.pop()
+    #     print("processing:", rel.info())
+    #     self.correlate(rel.dependent, rel.independent, rel.command)
+
+
+    def processRelations(self):
+
+        # correlate all chain elements
+        for c in self.relationChain:
+            # save filename before processing
+            self.relationChainInfo.append(c.getInfo())
+            self.outfilename = "_".join(self.relationChainInfo)
+            print("correlating: ", c.getInfo())
+            self.correlate(c.dependent, c.independent, c.command)
         
-        # outfilepath = "datasets/"
-        outfilepath = "D:\dev\dtfw\Applications\MDSCorrelationDemo\Data/"
-        outfileending = ".csv"
-        outfilename = str(filename)
-        return (outfilepath + outfilename + outfileending)
 
-
-    def getDataset(self):
+    def data(self):
         return self.dataset
+
+
+    def corTable(self):
+        print("-"*30, "\nCorrelation Table")
+        print(self.data().corr())
+
+
+    def saveFile(self):
+
+        path = "generated_data/"
+        # outfilepath = "D:\dev\dtfw\Applications\MDSCorrelationDemo\Data/"
+        
+        m = len(self.data())
+        n = len(self.data().columns)
+
+        name = "[{m}x{n}]_".format(m=m,n=n)
+        name += "_".join(self.relationChainInfo)
+        
+        fullname = path + name + ".csv"
+        
+        self.data().to_csv(fullname)
+
+        print("-"*30)
+        print("saved to:", fullname)
+        outFileSize = os.path.getsize(fullname)
+        print("filesize:", round(outFileSize / 1000000, 2), "MB.")
 
 
 
@@ -162,6 +182,8 @@ class Command:
 
         # possible functional dependencies
         self.ftypes = set(["lin", "exp", "sin", "cos", "log10", "log2", "pow"])
+        # TODO make dist list
+        self.noises = set(["norm","uni"])
 
         # basic function type
         self.ftype = "lin"
@@ -172,19 +194,17 @@ class Command:
         self.slope = 0
         self.shift = 0     # offset for polys
 
-        # add noise
+        # noise
         self.noise = "none"
-        self.mu = 0        # for normal dist
-        self.sig = 1     # for normal dist
-        self.uniMin = -1   # for uniform dist
-        self.uniMax = 1    # for uniform dist
+        self.p1 = 0     # mean or uniMin
+        self.p2 = 1     # stddev or uniMax
         
         # TODO make command id
-        self.setInfo()
+        self.info = "default"
+        self.updateInfo()
         
 
-    
-    def setCommand(self, raiser, slope, noise, p1, p2, shift=0, ftype="lin", power=1):
+    def make(self, slope=0, ftype="lin", noise="none", p1=0, p2=1, raiser=0, shift=0, power=1):
         
         # y = raiser + slope * f(x + shift)^power + noise(p1, p2)
 
@@ -202,35 +222,46 @@ class Command:
         self.shift = shift
 
         # set noise
-        if noise == "normal":
+        if noise == "normal" or "uniform":
             self.noise = noise
-            self.mu = p1
-            self.sig = p2
-        if noise == "uniform":
-            self.noise = noise
-            self.uniMin = p1
-            self.uniMax = p2
+            self.p1 = p1
+            self.p2 = p2
 
-        self.setInfo()
+        self.updateInfo()
 
+ 
+    def updateInfo(self):
+        # slope=0, ftype="lin", noise="none", p1=0, p2=1, raiser=0, shift=0, power=1):
+        # (E<--y = 0 + 0.9 * lin(x + 0)^1 + normal(0,1) ---B)
+        # self.info = 'y = {0} + {1} * {2}(x + {3})^{4} + {5}({6},{7}) '.format(
+        #         self.raiser, self.slope, self.ftype, self.shift, self.power, self.noise, self.mu, self.sig)
+        self.info = '([{raiser}]+[{slope},{ftype},{shift},{power}]+[{noise},{p1},{p2}])'.format(
+            raiser = self.raiser,
+            slope = self.slope,
+            ftype = self.ftype,
+            shift = self.shift,
+            power = self.power,
+            noise = self.noise,
+            p1 = self.p1,
+            p2 = self.p2
+            )
+                
 
-        
-    # Getter Setter
-    def setInfo(self):
-        self.info = 'y = {0} + {1} * {2}(x + {3})^{4} + {5}({6},{7}) '.format(
-                self.raiser, self.slope, self.ftype, self.shift, self.power, self.noise, self.mu, self.sig)
-        
-
-    def getInfo(self):
+    def info(self):
         return self.info
 
 
-
 #################################################
-class CorrChain:
-    pass
+class ChainElement:
+    
+    def __init__(self, dep, ind, com):
+        self.dependent = dep
+        self.independent = ind
+        self.command = com
 
-
+    def getInfo(self):
+        ans = "(" + self.dependent + "~" + self.command.info + "~" + self.independent + ")"
+        return ans
 
 
 #################################################
@@ -251,80 +282,49 @@ def vis(x, y, info):
     # plt.savefig('lin_normalposcorr.pdf', format="pdf")
 
 
+def runTest():
 
-######################################
-# Run
-######################################
-
-# assemble correlation commands
-# "lin", "exp", "sin", "cos", "log10", "log2", "pow"
-com1 = Command()
-com1.setCommand(0,0.7,"normal",0,1)
-
-com2 = Command()
-com2.setCommand(0, 0.5, "normal", 0.3, 2)
-
-
-#####################################
-# assemble initial raw dataset
-m = 20    # number of rows to generate
-n = 4     # number of features
-# determine which feature pair gets correlated
-# must be in bounds of numFeatures
-# example:  numFeatures = 5 --> [A,...,E]
-# example:  numFeatures = 7 --> [A,...,G]
-correlator = Correlator()
-correlator.makeRawData(m, n)
-
-correlator.addCommand(com1)
-correlator.addCommand(com2)
-
-
-
-# data = correlator.getDataset()
-# print(data.head())
-# correlator.correlate("A", "C", com1)
-# print(data.head())
-
-# print(data.columns.values)
-# plt.plot(data)
-# plt.legend()
-# plt.show()
-
-# print("\nCorrelation Table:")
-# print(data.corr())
-
-# print("A-B", pear(data["A"], data["B"]))
-# print(pear(data["A"], data["C"]))
-# print(pear(data["A"], data["D"]))
-# print(pear(data["B"], data["C"]))
-# print(pear(data["B"], data["D"]))
-# print(pear(data["C"], data["D"]))
-
-
-# vis(data.A, data.B, com1.info)
-#    plt.legend()
-#    plt.show()
+    m = 30    # number of samples
+    n = 6     # example: 7 --> [A,...,G]
     
-# outfilename = makeOutfilename("lin_[{0}x{1}]_d{2}~{3}~i{4}".format(
-#         numElements, numFeatures, dependent, com["ftype"], independent))
-# df.to_csv(outfilename)
+    cor = Correlator()
+    cor.init(m, n)
 
-# print("file generated:", outfilename)
+    # "lin", "exp", "sin", "cos", "log10", "log2", "pow"
+    # (E<--y = 0 + 0.9 * lin(x + 0)^1 + normal(0,1) ---B)
+    com1 = Command()
+    com1.make(0.9,"lin","normal")
+    com2 = Command()
+    com2.make(0.8, "lin","normal")
+    com3 = Command()
+    com3.make(0.8, "lin", "normal", 0, 1.8)
 
-# outFileSize = os.path.getsize(outfilename)
-# print("filesize:", round(outFileSize / 1000000, 2), "MB.")
-    
+    # order matters (last in, first out)
+    # TODO make graph of relations
+    cor.add("A","C", com1)
+    cor.add("B","A", com2)
+    cor.add("E","B", com3)
+
+    # print(cor.data().head())
+    # cor.saveFile()
+    # cor.corTable()
+
+    cor.processRelations()
+
+    # cor.corTable()
+    cor.saveFile()
 
 
+    # print(data.columns.values)
+    # plt.plot(data)
+    # plt.legend()
+    # plt.show()
 
+    # vis(data.A, data.B, com1.info)
+    #    plt.legend()
+    #    plt.show()
 
-
-
-
-
-
-
+runTest()
 
 
 
