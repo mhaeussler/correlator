@@ -21,32 +21,28 @@ rf = np.random.random
 #################################################
 class Correlator:
     
-    def __init__(self):
+    def __init__(self, m=None, n=None):
         self.outfilename = ""
         self.featureNames = []
         self.dataset = False
         self.relationChain = []
         self.relationChainInfo = []
 
+        if m and n != None:
+            self.init(m, n)
     
-    def makeFeatureNames(self, n):
-        """returns feature list with unique dummy names according to m."""
-        
+    def makeFeatureNames(self, n):       
         alphabet = tuple(string.ascii_uppercase)
-        
         counter = 0;
         counter1 = 0;
         for i in range(n):
             staged = alphabet[i % 26]   # A...Z
-            
             if( counter % 26 == 0):
                 counter1 += 1
-                
             if(staged in self.featureNames):
                 self.featureNames.append(staged*counter1)
             else:
-                self.featureNames.append(staged)
-            
+                self.featureNames.append(staged)  
             counter += 1
            
     
@@ -78,15 +74,15 @@ class Correlator:
             if command.ftype == "lin" :
                 f = ind + command.shift
             elif command.ftype == "sin":
-                f = np.sin(ind + shift)
+                f = np.sin(ind + command.shift)
             elif command.ftype == "exp":
-                f = np.exp(ind + shift)
+                f = np.exp(ind + command.shift)
             elif command.ftype == "cos":
-                f = np.cos(ind + shift)
+                f = np.cos(ind + command.shift)
             elif command.ftype == "log10":
-                f = np.log10(ind + shift)
+                f = np.log10(ind + command.shift)
             elif command.ftype == "log2":
-                f = np.log2(ind + shift)
+                f = np.log2(ind + command.shift)
             elif command.ftype == "pow":
                 f = (ind + shift)**command.power
 
@@ -95,9 +91,9 @@ class Correlator:
             
             if command.noise == "normal":
                 rands = np.random.normal(command.p1, command.p2,len(ind))
-            elif noise == "uniform":
+            elif command.noise == "uniform":
                 rands = np.random.uniform(command.p1, command.p2,len(ind))
-            elif noise == "none":
+            elif command.noise == "none":
                 rands = 0
             
             # TODO currently dep value gets overwritten!! --> No multicollinearities makeable
@@ -163,6 +159,7 @@ class Correlator:
         name = "[{m}x{n}]_".format(m=m,n=n)
         name += "_".join(self.relationChainInfo)
         
+        # TODO maybe make separate XML
         fullname = path + name + ".csv"
         
         self.data().to_csv(fullname)
@@ -177,37 +174,23 @@ class Correlator:
 #################################################
 class Command:
     
-    def __init__(self):
-        # default command
+    def __init__(self, slope=0, ftype="lin", noise="none", p1=0, p2=1, raiser=0, shift=0, power=1):
 
         # possible functional dependencies
         self.ftypes = set(["lin", "exp", "sin", "cos", "log10", "log2", "pow"])
         # TODO make dist list
         self.noises = set(["norm","uni"])
-
-        # basic function type
-        self.ftype = "lin"
-        self.power = 1
-
-        # adjust function
-        self.raiser = 0
-        self.slope = 0
-        self.shift = 0     # offset for polys
-
-        # noise
-        self.noise = "none"
-        self.p1 = 0     # mean or uniMin
-        self.p2 = 1     # stddev or uniMax
-        
-        # TODO make command id
         self.info = "default"
-        self.updateInfo()
+
+        self.make(slope, ftype, noise, p1, p2, raiser, shift, power)        
+        
+        # # TODO make command id
+        
         
 
     def make(self, slope=0, ftype="lin", noise="none", p1=0, p2=1, raiser=0, shift=0, power=1):
         
         # y = raiser + slope * f(x + shift)^power + noise(p1, p2)
-
         ftype = ftype.lower()
 
         if ftype in self.ftypes:
@@ -285,44 +268,25 @@ def vis(x, y, info):
 def runTest():
 
     m = 30    # number of samples
-    n = 6     # example: 7 --> [A,...,G]
+    n = 4     # example: 7 --> [A,...,G]
     
-    cor = Correlator()
-    cor.init(m, n)
+    cor = Correlator(m, n)
+    # cor.init(m, n)
 
     # "lin", "exp", "sin", "cos", "log10", "log2", "pow"
-    # (E<--y = 0 + 0.9 * lin(x + 0)^1 + normal(0,1) ---B)
-    com1 = Command()
-    com1.make(0.9,"lin","normal")
-    com2 = Command()
-    com2.make(0.8, "lin","normal")
-    com3 = Command()
-    com3.make(0.8, "lin", "normal", 0, 1.8)
-
-    # order matters (last in, first out)
-    # TODO make graph of relations
-    cor.add("A","C", com1)
-    cor.add("B","A", com2)
-    cor.add("E","B", com3)
-
-    # print(cor.data().head())
-    # cor.saveFile()
-    # cor.corTable()
+    cor.add("A","C", Command(0.6,"sin","uniform",-1,1))
+    # cor.add("B","A", Command(0.8, "lin","normal"))
+    # cor.add("E","B", Command(0.8, "lin", "normal", 0, 1.8))
 
     cor.processRelations()
 
-    # cor.corTable()
     cor.saveFile()
+    
+    cor.corTable()
 
-
-    # print(data.columns.values)
-    # plt.plot(data)
+    plt.plot(cor.data()["C"], cor.data()["A"], "bx")
     # plt.legend()
-    # plt.show()
-
-    # vis(data.A, data.B, com1.info)
-    #    plt.legend()
-    #    plt.show()
+    plt.show()
 
 runTest()
 

@@ -1,1 +1,5 @@
+.gitignore
 old/
+__pycache__/
+core_scenarios/
+generated_data/
